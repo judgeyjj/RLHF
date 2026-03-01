@@ -1,6 +1,7 @@
 # train.py - 统一训练入口
 # 支持 5 种算法: PPO, DPO, GRPO, DAPO, GSPO
-# 硬件: 2x A40 48GB (Actor→GPU0, Reference→GPU1)
+# 训练方式: LoRA 微调 (只训练 ~0.3% 的参数)
+# 硬件: 2x A40 48GB (Actor+LoRA→GPU0, Reference→GPU1)
 
 import argparse
 import torch
@@ -46,6 +47,9 @@ def train_grpo(args):
             if step % args.log_every == 0:
                 print(f"[Epoch {epoch+1} Step {step}] Loss={result['loss']:.4f} Reward={result['mean_reward']:.4f}")
 
+    # 训练结束后保存 LoRA 权重
+    policy_model.save_lora(args.save_path + "/grpo_lora")
+
 
 def train_dapo(args):
     """DAPO 训练流程"""
@@ -78,6 +82,8 @@ def train_dapo(args):
                 print(f"[Epoch {epoch+1} Step {step}] Loss={result['loss']:.4f} "
                       f"Reward={result['mean_reward']:.4f} Resample={result['avg_resample']:.1f}")
 
+    policy_model.save_lora(args.save_path + "/dapo_lora")
+
 
 def train_gspo(args):
     """GSPO 训练流程"""
@@ -109,6 +115,8 @@ def train_gspo(args):
             )
             if step % args.log_every == 0:
                 print(f"[Epoch {epoch+1} Step {step}] Loss={result['loss']:.4f} Reward={result['mean_reward']:.4f}")
+
+    policy_model.save_lora(args.save_path + "/gspo_lora")
 
 
 def train_ppo(args):
@@ -211,7 +219,7 @@ def main():
                         help="选择训练算法")
     parser.add_argument("--model_id", type=str, default="Qwen/Qwen2.5-1.5B-Instruct",
                         help="HuggingFace 模型 ID")
-    parser.add_argument("--lr", type=float, default=1e-6, help="学习率")
+    parser.add_argument("--lr", type=float, default=5e-5, help="学习率 (LoRA 用 5e-5，全参数用 1e-6)")
     parser.add_argument("--epochs", type=int, default=1, help="训练轮数")
     parser.add_argument("--batch_size", type=int, default=2, help="每批处理几道题")
     parser.add_argument("--group_size", type=int, default=4, help="GRPO/DAPO/GSPO 的组大小")
@@ -219,6 +227,7 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=512, help="最大生成长度")
     parser.add_argument("--max_samples", type=int, default=100, help="使用多少条训练数据")
     parser.add_argument("--log_every", type=int, default=1, help="每几步打印一次日志")
+    parser.add_argument("--save_path", type=str, default="./checkpoints", help="LoRA 权重保存路径")
 
     args = parser.parse_args()
 
@@ -232,10 +241,11 @@ def main():
 
     print(f"算法: {args.algo.upper()}")
     print(f"模型: {args.model_id}")
+    print(f"训练方式: LoRA (rank=8, alpha=16)")
     print(f"数据: GSM8K (前 {args.max_samples} 条)")
 
     algo_map[args.algo](args)
-    print("\n训练完成！")
+    print("\n训练完成！LoRA 权重已保存。")
 
 
 if __name__ == "__main__":
